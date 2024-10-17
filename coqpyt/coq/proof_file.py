@@ -34,6 +34,7 @@ class _AuxFile(object):
         copy: bool = False,
         workspace: Optional[str] = None,
         timeout: int = 30,
+        memory_limit: int = 2097152,
     ):
         self.__copy = copy
         self.__init_path(file_path)
@@ -41,7 +42,9 @@ class _AuxFile(object):
             uri = f"file://{workspace}"
         else:
             uri = f"file://{self.path}"
-        self.coq_lsp_client = CoqLspClient(uri, timeout=timeout)
+        self.coq_lsp_client = CoqLspClient(
+            uri, timeout=timeout, memory_limit=memory_limit
+        )
 
     def __enter__(self):
         return self
@@ -168,10 +171,15 @@ class _AuxFile(object):
         library_hash: str,
         timeout: int,
         workspace: Optional[str] = None,
+        memory_limit: int = 2097152,
     ):
         # NOTE: the library_hash attribute is only used for the LRU cache
         coq_file = CoqFile(
-            library_file, workspace=workspace, library=library_name, timeout=timeout
+            library_file,
+            workspace=workspace,
+            library=library_name,
+            timeout=timeout,
+            memory_limit=memory_limit,
         )
         coq_file.run()
         context = coq_file.context
@@ -223,6 +231,7 @@ class _AuxFile(object):
         timeout: int,
         workspace: Optional[str] = None,
         use_disk_cache: bool = False,
+        memory_limit: int = 2097152,
     ) -> Dict[str, Term]:
         with open(library_file, "r") as f:
             contents_to_hash = library_name + library_file + str(workspace) + f.read()
@@ -232,7 +241,12 @@ class _AuxFile(object):
             if cached_library is not None:
                 return cached_library
         aux_context = _AuxFile.__load_library(
-            library_name, library_file, library_hash, timeout, workspace=workspace
+            library_name,
+            library_file,
+            library_hash,
+            timeout,
+            workspace=workspace,
+            memory_limit=memory_limit,
         )
         # FIXME: we ignore the usage of "Local" from imported files to
         # simplify the implementation. However, they can be used:
@@ -260,7 +274,10 @@ class _AuxFile(object):
 
     @staticmethod
     def get_coq_context(
-        timeout: int, workspace: Optional[str] = None, use_disk_cache: bool = False
+        timeout: int,
+        workspace: Optional[str] = None,
+        use_disk_cache: bool = False,
+        memory_limit: int = 2097152,
     ) -> FileContext:
         temp_path = os.path.join(
             tempfile.gettempdir(), "aux_" + str(uuid.uuid4()).replace("-", "") + ".v"
@@ -284,6 +301,7 @@ class _AuxFile(object):
                     timeout,
                     workspace=workspace,
                     use_disk_cache=use_disk_cache,
+                    memory_limit=memory_limit,
                 )
                 context.add_library(library, terms)
 
@@ -305,6 +323,7 @@ class ProofFile(CoqFile):
         workspace: Optional[str] = None,
         coq_lsp: str = "coq-lsp",
         coqtop: str = "coqtop",
+        memory_limit: int = 2097152,
         error_mode: str = "strict",
         use_disk_cache: bool = False,
     ):
@@ -321,6 +340,8 @@ class ProofFile(CoqFile):
             coqtop (str, optional): Path to the coqtop binary used to compile the Coq libraries
                 imported by coq-lsp. This is NOT passed as a parameter to coq-lsp, it is
                 simply used to check the Coq version in use. Defaults to "coqtop".
+            memory_limit (int, optional): RAM limit for the coq-lsp process
+                in kbytes. It only works for Linux systems. Defaults to 2097152.
             error_mode (str, optional): How errors are handled. Can be "strict" or "warning".
                 If "strict", an exception will be raised when an unexpected behavior occurs.
                 If "warning", a warning will be logged instead (it only applies to recoverable errors).
@@ -333,11 +354,19 @@ class ProofFile(CoqFile):
         """
         if not os.path.isabs(file_path):
             file_path = os.path.abspath(file_path)
-        super().__init__(file_path, library, timeout, workspace, coq_lsp, coqtop)
-        self.__aux_file = _AuxFile(file_path, timeout=self.timeout, workspace=workspace)
+        super().__init__(
+            file_path, library, timeout, workspace, coq_lsp, coqtop, memory_limit
+        )
+        self.__aux_file = _AuxFile(
+            file_path,
+            timeout=self.timeout,
+            workspace=workspace,
+            memory_limit=memory_limit,
+        )
         self.__error_mode = error_mode
         self.__use_disk_cache = use_disk_cache
         self.__aux_file.didOpen()
+        self.memory_limit = memory_limit
 
         try:
             # We need to update the context already defined in the CoqFile
@@ -346,6 +375,7 @@ class ProofFile(CoqFile):
                     self.timeout,
                     workspace=self.workspace,
                     use_disk_cache=self.__use_disk_cache,
+                    memory_limit=memory_limit,
                 )
             )
         except Exception as e:
@@ -641,6 +671,7 @@ class ProofFile(CoqFile):
                 self.timeout,
                 workspace=self.workspace,
                 use_disk_cache=self.__use_disk_cache,
+                memory_limit=self.memory_limit,
             )
             self.context.add_library(library, library_terms)
 

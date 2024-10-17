@@ -44,6 +44,7 @@ class CoqFile(object):
         workspace: Optional[str] = None,
         coq_lsp: str = "coq-lsp",
         coqtop: str = "coqtop",
+        memory_limit: int = 2097152,
     ):
         """Creates a CoqFile.
 
@@ -58,6 +59,8 @@ class CoqFile(object):
             coqtop(str, optional): Path to the coqtop binary used to compile the Coq libraries
                 imported by coq-lsp. This is NOT passed as a parameter to coq-lsp, it is
                 simply used to check the Coq version in use. Defaults to "coqtop".
+            memory_limit (int, optional): RAM limit for the coq-lsp process
+                in kbytes. It only works for Linux systems. Defaults to 2097152.
         """
         if not os.path.isabs(file_path):
             file_path = os.path.abspath(file_path)
@@ -67,7 +70,9 @@ class CoqFile(object):
             uri = f"file://{workspace}"
         else:
             uri = f"file://{self._path}"
-        self.coq_lsp_client = CoqLspClient(uri, timeout=timeout, coq_lsp=coq_lsp)
+        self.coq_lsp_client = CoqLspClient(
+            uri, timeout=timeout, coq_lsp=coq_lsp, memory_limit=memory_limit
+        )
         uri = f"file://{self._path}"
         text = self.__read()
 
